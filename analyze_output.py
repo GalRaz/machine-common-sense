@@ -10,17 +10,26 @@ from scipy.stats import pearsonr
 from Scripts.video import get_frame_information
 
 # global directory path variables. make these your folder names under MCS
-ICATCHER_DIR = 'iCatcherOutput'
+ICATCHER_DIR = '/nese/mit/group/saxelab/users/galraz/icatcher_tests/icatcher_plus/icatcher_output/mcs'
 
 # trial info
-TRIAL_INFO_DIR = 'lookit_info/lookit_trial_timing_info.csv'
+TRIAL_INFO_DIR = 'lookit_info/lookit_trial_timing_info_sessionA.csv'
 
 # directory for videos
-VID_DIR = '/nese/mit/group/saxelab/users/galraz/mcs/videos/BBB'
+VID_DIR = '/nese/mit/group/saxelab/users/galraz/mcs/videos/exp1/sessionA'
 
 # add absolute path to iCatcher repo
 ICATCHER = '/Users/gracesong/dev/iCatcher'
-sys.path.append(ICATCHER)
+# sys.path.append(ICATCHER)
+
+LOOKAWAY_CRITERION = False
+
+# time until lookaway criterion starts
+lookaway_onset_tolerance = 5;
+lookaway_criterion_duration = 3;
+
+# amount of time to check before the end of the trial for off looks
+time_before_end_check_off = 4000
 
 ###################
 ## HELPER FUNCTIONS ##
@@ -33,7 +42,7 @@ def listdir_nohidden(path):
 ###################
 ## ANALYSIS SCRIPT ##
 ####################
-def run_analyze_output(data_filename="BBB_output.csv", session=None):
+def run_analyze_output(data_filename="AGENT_sessionA_output_noLA.csv", session=None):
     """
     Given an iCatcher output directory and Datavyu input and output 
     files, runs iCatcher over all videos in vid_dir that have not been
@@ -48,6 +57,8 @@ def run_analyze_output(data_filename="BBB_output.csv", session=None):
     for filename in listdir_nohidden(ICATCHER_DIR):
         child_id = filename.split('.')[0]
 
+        print(filename)
+        
         # skip if child data already added
         output_file = Path(data_filename)
         if output_file.is_file():
@@ -76,7 +87,6 @@ def run_analyze_output(data_filename="BBB_output.csv", session=None):
         # get trial onsets and offsets from input file, match to iCatcher file
         trial_sets, df = get_trial_sets(child_id)
         assign_trial(icatcher, trial_sets)
-        
         # sum on looks and off looks for each trial
         icatcher_times = get_on_off_times(icatcher)
         # datavyu_times = get_output_times(output_file)
@@ -86,42 +96,12 @@ def run_analyze_output(data_filename="BBB_output.csv", session=None):
             print('mismatch in # of trials between icatcher and session info: {} in {} folder'.format(child_id, VID_DIR))
             continue
 
-        write_to_csv(data_filename, child_id, icatcher_times, session, df['fam_or_test'], df['scene'], icatcher)
-
-        # return comparison metrics 
-        # icatcher_arr, datavyu_arr = np.array(icatcher_times).flatten(), np.array(datavyu_times).flatten()
-        #stat, p = pearsonr(icatcher_arr, datavyu_arr)
-       # print('Datavyu total on-off looks per trial: \n', datavyu_times)
-      #  print('iCatcher total on-off looks per trial: \n', icatcher_times)
-      #  print('Pearson R coefficient: {} \np-value: {}'.format(round(stat, 3), round(p, 3)))
+        write_to_csv(data_filename, child_id, icatcher_times, session, df['fam_or_test'], df['scene'], df['parentEnded'], icatcher)
 
 
 #####################
 ## HELPER FUNCTIONS ##
 #####################
-
-def get_input_output(filename):
-    """
-    Returns the filenames for the input and output Datavyu files
-    corresponding to the iCatcher video coded in filename
-    
-    filename (string): name of tabulated iCatcher output file in format
-    '[CHILD_ID]_annotation.txt'
-    rtype: List[string]
-    """
-    child_id = filename.split('_')[0]
-    input_output = []
-
-    # search for corresponding input file in Datavyu folder
-    for folder in [DATAVYU_IN, DATAVYU_OUT]:
-        for f in os.listdir(folder):
-            if child_id in f:
-                input_output.append(f)
-                break
-    if len(input_output) < 2:
-        raise Exception('Missing Datavyu files for {}.'.format(child_id))
-    return input_output
-
 
 def read_convert_output(filename, stamps):
     """
@@ -135,10 +115,15 @@ def read_convert_output(filename, stamps):
     time stamp at frame i
     rtype: DataFrame
     """
+
     npz = np.load(filename)
     df = pd.DataFrame([])
 
     lst = npz.files
+
+    # looking coding
+    print('looking coding')
+    print(npz[lst[0]])
 
     df['frame'] = range(1, len(npz[lst[0]]) + 1)
     df['on_off'] = ['on' if frame > 0 else 'off' for frame in npz[lst[0]]]
@@ -166,7 +151,7 @@ def get_trial_sets(child_id):
     df = df[df['child_id'] == child_id] 
 
     # there's two different file formats -- updated as needed 
-    df_sets = df[['relative_onset', 'relative_offset']]
+    df_sets = df[['relative_onset', 'relative_offset', 'parentEnded']]
     df_sets = df_sets.rename(columns={"relative_onset": "onset", "relative_offset": "offset"})
     
     df_sets.dropna(inplace=True)
@@ -216,10 +201,14 @@ def get_on_off_times(df):
     rtype: List[List[float]]
     """
     n_trials = df['trial'].max()
-    looking_times = [[0, 0] for trial in range(n_trials)]
+    looking_times = [[0, 0, 0] for trial in range(n_trials)]
     
     # separate times by trial
     trial_groups = df.groupby(['trial'])
+
+    print(df)
+
+    # iterate through trials
     for trial_num, group in trial_groups:
         # 0 means does not belong in a trial
         if trial_num == 0:
@@ -227,6 +216,13 @@ def get_on_off_times(df):
 
         last_look, start_time = None, None
 
+        # initialize "last_time" as first timestamp in trial
+        last_time = group['time_ms'].iloc[0]
+
+        # get index of frame x sec before end to investigate lookaway before before the end of trial
+        trial_end_period = group['time_ms'].iloc[-1] - time_before_end_check_off
+
+        # iterate through looks
         for index, row in group.iterrows():
             time, look = row['time_ms'], row['on_off']
 
@@ -235,8 +231,23 @@ def get_on_off_times(df):
                 last_look, start_time = look, time
                 look_time = 0
 
+            # count time spent looking off in last 4 seconds of the trial
+
+            ## DEBUG: check that the 4 sec cutoff works
+            if time > trial_end_period:
+                ind = ['on', 'off'].index(look)
+        
+                if ind == 1: 
+                    looking_times[trial_num - 1][2] += time - last_time
+
             if look == last_look:
                 look_time = (time - start_time) / 1000
+
+                # look away criterion: if criterion is met and it's more than x sec into the trial
+                if LOOKAWAY_CRITERION and look == 'off' and look_time > lookaway_criterion_duration and \
+                (time - group.iloc[1,:]['time_ms']) > lookaway_onset_tolerance*1000:
+
+                    break
 
             # end of a look or end of trial
             else:
@@ -246,38 +257,25 @@ def get_on_off_times(df):
                 # reset values
                 last_look, start_time = None, None
 
+            # save time from previous frame
+            last_time = time
+
         # special case where entire trial is one look
         if last_look and start_time:
                 ind = ['on', 'off'].index(last_look)
-                looking_times[trial_num - 1][ind] += look_time   
+                looking_times[trial_num - 1][ind] += look_time 
 
-    looking_times = [[round(on, 3), round(off, 3)] for on, off in looking_times]
+    looking_times = [[round(on, 3), round(off, 3), round(time_off_before_end/1000, 3)] for on, off, time_off_before_end in looking_times]
     
     return looking_times
 
-
-def get_output_times(output_file):
-    """
-    Finds corresponding Datavyu output file for given iCatcher output file
-    and returns a list of [on times, off times] for each trial in 
-    seconds
-    
-    output_file (string): name of Datavyu output file
-    rtype: List[List[int]]
-    """
-    output_file = DATAVYU_OUT + '/' + output_file
-    df = pd.read_csv(output_file)
-    df_looks = df[['Looks On Total (s)', 'Looks Off Total (s)']]
-    df_looks.dropna(inplace=True)
-     
-    looking_times = []
-    for _, trial in df_looks.iterrows():
-        looking_times.append([round(trial['Looks On Total (s)'], 3), round(trial['Looks Off Total (s)'], 3)])
-    
-    return looking_times
+def convert(date_time):
+    s = pd.Series(pd.to_timedelta(date_time))
+    datetime_str = s.dt.total_seconds() * 1e3
+    return datetime_str
 
 
-def write_to_csv(data_filename, child_id, icatcher_data, session, trial_type, stim_type, icatcher):
+def write_to_csv(data_filename, child_id, icatcher_data, session, trial_type, stim_type, parent_ended, icatcher):
     """
     checks if output file is in directory. if not, writes new file
     containing looking times computed by iCatcher and Datavyu for child
@@ -291,19 +289,34 @@ def write_to_csv(data_filename, child_id, icatcher_data, session, trial_type, st
     session (string): the experiment session the participant was placed in
     rtype: None
     """
-    # assert(len(icatcher_data) == len(datavyu_data))
-    num_trials = len(icatcher_data)
+    trial_num = [i + 1 for i in range(len(icatcher_data))]
     id_arr = [child_id] * len(icatcher_data)
+    
+    # calculate confidence
+    confidence = icatcher[(icatcher['on_off'] == 'on') & (icatcher['trial'] != 0)].groupby('trial')[['confidence']].mean()
+    
+    # check whether a trial is missing, which can happen if there are no on frames in a trial
+    missing_trials = list(set(trial_num) ^ set(confidence.index))
+    
+    for trial in missing_trials:
+        confidence.at[trial] = 0 
+    
     data = {
         'child': id_arr,
-        'session': [session] * num_trials,
-        'trial_num': [i + 1 for i in range(len(icatcher_data))],
+        'session': [session] * len(trial_num),
+        'trial_num': trial_num,
         'trial_type': trial_type,
         'stim_type': stim_type,
-        'confidence': list(icatcher[(icatcher['on_off'] == 'on') & (icatcher['trial'] != 0)].groupby('trial')[['confidence']].mean().squeeze()),
+        'confidence': list(confidence.squeeze()),
         'iCatcher_on(s)': [trial[0] for trial in icatcher_data],
-        'iCatcher_off(s)': [trial[1] for trial in icatcher_data]
+        'iCatcher_off(s)': [trial[1] for trial in icatcher_data],
+        't_spent_off_at_trial_end': [trial[2] for trial in icatcher_data],
+        'parentEnded': parent_ended
     }
+
+    # if lookaway criterion is set, t_spent_off_at_trial_end is not calculated so remove here
+    if LOOKAWAY_CRITERION:
+        data.pop('t_spent_off_at_trial_end', None)
 
     df = pd.DataFrame(data)
 

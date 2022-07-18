@@ -48,8 +48,6 @@ def onset_offset_manual_lookit(manual_direc, manual_annotated_file, lookit_file)
     # get length trial for lookit
     lookit_df = lookit_df.assign(trial_length = lookit_df['relative_offset'] - lookit_df['relative_onset'])
 
-
-    
     # get length trial for hand annotated
     manual_df = manual_df.assign(trial_length = manual_df[trial_offset] - manual_df[trial_onset])
 

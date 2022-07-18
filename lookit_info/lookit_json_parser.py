@@ -4,17 +4,17 @@ from string import digits
 import json
 import numpy as np
 
-iCatcher_dir = 'iCatcherOutput'
+PARENT_CONTROL = True
 
 def get_lookit_trial_times():
 
-    f = open('lookit_info/BBB.json')
-    BBB_info = json.load(f)
+    f = open('lookit_info/lookit_info_sessionB.json')
+    exp_info = json.load(f)
 
     # dataframe in which info will be accumulated
     trial_timing_info = pd.DataFrame()
 
-    for session_info in BBB_info:
+    for session_info in exp_info:
 
         # get key of recording start
         recording_start_key = [v for v in session_info['exp_data'].keys() if v.endswith('start-recording-with-image')]
@@ -38,6 +38,15 @@ def get_lookit_trial_times():
                     # get locations of videoStarted and videoPaused
                     videoStartedIdx = ['videoStarted' in event for event in eventTypes]
                     videoPausedIdx = ['videoPaused' in event for event in eventTypes]
+                    
+                    parentEnded = False;
+
+                    if PARENT_CONTROL:
+                        # check whether parent termination can be found in the video
+                        trialEndReason = value['trialEndReason']
+                        if trialEndReason == "parentEnded":
+                            parentEnded = True;
+
 
                     # find first place where 'videoStarted' appears
                     if any(videoStartedIdx):
@@ -53,15 +62,16 @@ def get_lookit_trial_times():
                                         'absolute_onset': datetime.fromisoformat(value['eventTimings'][video_start_idx]['timestamp'][0:-1]), \
                                         'absolute_offset': datetime.fromisoformat(value['eventTimings'][video_end_idx]['timestamp'][0:-1]),
                                         'trial_type_onset': eventTypes[video_start_idx],
-                                        'trial_type_offset': eventTypes[video_end_idx]}]
+                                        'trial_type_offset': eventTypes[video_end_idx], 
+                                        'parentEnded': parentEnded}]
 
                         trial_timing_info = trial_timing_info.append(pd.DataFrame(trial_timestamps))
 
     # get trial onset/offset relative to onset of video recording
-    trial_timing_info['relative_onset'] = trial_timing_info['absolute_onset'] - trial_timing_info['video_onset'] 
+    trial_timing_info['relative_onset'] = trial_timing_info['absolute_onset'] - trial_timing_info['video_onset']
     trial_timing_info['relative_onset'] = trial_timing_info['relative_onset'].apply(lambda x: x.total_seconds() * 1000)
 
-    trial_timing_info['relative_offset'] = trial_timing_info['absolute_offset'] - trial_timing_info['video_onset'] 
+    trial_timing_info['relative_offset'] = trial_timing_info['absolute_offset'] - trial_timing_info['video_onset']
     trial_timing_info['relative_offset'] = trial_timing_info['relative_offset'].apply(lambda x: x.total_seconds() * 1000)
 
     # clean up trial type to be ready for parsing
@@ -79,4 +89,6 @@ def get_lookit_trial_times():
     return trial_timing_info
 
 trial_timing_info = get_lookit_trial_times()
-trial_timing_info.to_csv('lookit_trial_timing_info.csv')
+trial_timing_info.to_csv('lookit_info/lookit_trial_timing_info_sessionB.csv')
+
+## ADD: whether or not parent ended trial
