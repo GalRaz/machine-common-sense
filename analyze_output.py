@@ -10,7 +10,7 @@ from scipy.stats import pearsonr
 from Scripts.video import get_frame_information
 
 # global directory path variables. make these your folder names under MCS
-ICATCHER_DIR = '/nese/mit/group/saxelab/users/galraz/icatcher_tests/icatcher_plus/icatcher_output/mcs'
+ICATCHER_DIR = '/nese/mit/group/saxelab/users/galraz/icatcher_tests/icatcher_plus/icatcher_output/mcs_A/'
 
 # trial info
 TRIAL_INFO_DIR = 'lookit_info/lookit_trial_timing_info_sessionA.csv'
@@ -22,11 +22,11 @@ VID_DIR = '/nese/mit/group/saxelab/users/galraz/mcs/videos/exp1/sessionA'
 ICATCHER = '/Users/gracesong/dev/iCatcher'
 # sys.path.append(ICATCHER)
 
-LOOKAWAY_CRITERION = False
+LOOKAWAY_CRITERION = True
 
 # time until lookaway criterion starts
 lookaway_onset_tolerance = 5;
-lookaway_criterion_duration = 3;
+lookaway_criterion_duration = 2;
 
 # amount of time to check before the end of the trial for off looks
 time_before_end_check_off = 4000
@@ -42,7 +42,7 @@ def listdir_nohidden(path):
 ###################
 ## ANALYSIS SCRIPT ##
 ####################
-def run_analyze_output(data_filename="AGENT_sessionA_output_noLA.csv", session=None):
+def run_analyze_output(data_filename="AGENT_sessionA_output_wLA.csv", session=None):
     """
     Given an iCatcher output directory and Datavyu input and output 
     files, runs iCatcher over all videos in vid_dir that have not been

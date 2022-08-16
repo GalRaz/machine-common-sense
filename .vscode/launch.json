@@ -8,21 +8,16 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": true,
+            "args": ["\n","exit", "0"],
         },
         {
             "name": "Python: Debug Console",
             "type": "python",
             "request": "launch",
             "program": "${file}",
-            "console": "internalConsole"
-        },
-        {
-            "name": "Python: Terminal (external)",
-            "type": "python",
-            "request": "launch",
-            "program": "${file}",
-            "console": "externalTerminal"
-        },
+            "console": "internalConsole",
+            "args": ["&&", "exit"]
+        }
     ]
 }
